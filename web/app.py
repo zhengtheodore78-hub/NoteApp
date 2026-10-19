@@ -20,6 +20,9 @@ from flask import (
     render_template, Response, jsonify, abort,
 )
 
+# Import encryption utilities for AES-GCM comment encryption
+from encryption import encrypt_comment, decrypt_comment
+
 # --- Configuration ------------------------------------------------------------
 # All configuration comes from the environment (set in docker-compose.yml).
 DB_HOST = os.environ.get("DB_HOST", "db")
@@ -195,6 +198,11 @@ def dashboard():
     )
     notes = cur.fetchall()
     conn.close()
+    
+    # Decrypt comments before displaying to students
+    for note in notes:
+        note["comment"] = decrypt_comment(note["comment"])
+    
     return render_template("dashboard.html", notes=notes, token=session.get("token"))
 
 
@@ -219,6 +227,8 @@ def api_notes(note_id):
     if not note:
         return jsonify({"error": "not found"}), 404
     note["grade"] = float(note["grade"]) if note["grade"] is not None else None
+    # Decrypt comment before returning via API
+    note["comment"] = decrypt_comment(note["comment"])
     return jsonify(note)
 
 
@@ -238,6 +248,11 @@ def teacher():
         "JOIN classes c ON c.id = n.class_id ORDER BY c.name, u.username"
     )
     notes = cur.fetchall()
+    
+    # Decrypt comments before displaying to teachers
+    for note in notes:
+        note["comment"] = decrypt_comment(note["comment"])
+    
     cur.execute("SELECT id, username FROM users WHERE role = 'student' ORDER BY username")
     students = cur.fetchall()
     conn.close()
@@ -254,18 +269,22 @@ def grades():
     class_id = request.form.get("class_id")
     grade = request.form.get("grade")
     comment = request.form.get("comment", "")
+    
+    # Encrypt the comment before storing in database (AES-GCM)
+    encrypted_comment = encrypt_comment(comment)
+    
     conn = get_db()
     cur = conn.cursor()
     if note_id:
         cur.execute(
             "UPDATE notes SET grade = %s, comment = %s WHERE id = %s",
-            (grade, comment, note_id),
+            (grade, encrypted_comment, note_id),
         )
     else:
         cur.execute(
             "INSERT INTO notes (student_id, class_id, grade, comment) "
             "VALUES (%s, %s, %s, %s)",
-            (student_id, class_id, grade, comment),
+            (student_id, class_id, grade, encrypted_comment),
         )
     conn.close()
     log(f"grade write by {session.get('username')} note_id={note_id or 'new'}")
@@ -295,6 +314,11 @@ def export_csv():
         )
     rows = cur.fetchall()
     conn.close()
+    
+    # Decrypt comments before exporting to CSV
+    for row in rows:
+        row["comment"] = decrypt_comment(row["comment"])
+    
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["student", "class", "grade", "comment"])
@@ -371,7 +395,7 @@ def admin_users():
             "INSERT INTO users (username, password, role, teacher_id) "
             "VALUES (%s, %s, %s, %s)",
             (request.form.get("username"), request.form.get("password"),
-             request.form.get("role", "student"), None),
+            request.form.get("role", "student"), None),
         )
     elif action == "delete":
         cur.execute("DELETE FROM users WHERE id = %s", (request.form.get("user_id"),))

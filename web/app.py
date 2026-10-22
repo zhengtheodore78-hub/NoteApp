@@ -27,6 +27,9 @@ from encryption import encrypt_comment, decrypt_comment
 # Import HMAC utilities for grade export integrity protection
 from hmac_utils import add_hmac_to_csv, verify_csv_integrity
 
+# Import Argon2 password utilities for secure password storage (Class 5 Lab 2)
+from password_utils import hash_password, verify_password, is_argon2_hash, needs_rehash
+
 # --- Configuration ------------------------------------------------------------
 # All configuration comes from the environment (set in docker-compose.yml).
 DB_HOST = os.environ.get("DB_HOST", "db")
@@ -182,27 +185,62 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "")
         password = request.form.get("password", "")
-        # Fixed: Use parameterized query to prevent SQL injection
+        
         conn = get_db()
         cur = conn.cursor()
         try:
+            # Get user with password hash
             cur.execute(
-                "SELECT id, username, role FROM users "
-                "WHERE username = %s AND password = %s",
-                (username, password),
+                "SELECT id, username, role, password FROM users "
+                "WHERE username = %s",
+                (username,),
             )
             row = cur.fetchone()
         except Exception as e:
-            # Log error to server log only, don't expose to user
             log(f"login query error: {e}")
             error = "Login failed."
             row = None
+        
+        if row:
+            stored_password = row["password"]
+            
+            # Check password type and verify accordingly
+            if is_argon2_hash(stored_password):
+                # Argon2 hash - verify properly
+                if verify_password(stored_password, password):
+                    # Check if rehash needed (parameters updated)
+                    if needs_rehash(stored_password):
+                        new_hash = hash_password(password)
+                        cur.execute(
+                            "UPDATE users SET password = %s WHERE id = %s",
+                            (new_hash, row["id"]),
+                        )
+                        conn.commit()
+                        log(f"password rehashed for user={row['username']}")
+                    # Login successful
+                    pass
+                else:
+                    row = None  # Invalid password
+            else:
+                # Legacy plaintext or MD5 - verify directly, then upgrade
+                if stored_password == password:
+                    # Plaintext match - upgrade to Argon2
+                    new_hash = hash_password(password)
+                    cur.execute(
+                        "UPDATE users SET password = %s WHERE id = %s",
+                        (new_hash, row["id"]),
+                    )
+                    conn.commit()
+                    log(f"password upgraded from plaintext for user={row['username']}")
+                else:
+                    row = None  # Invalid password
+        
         conn.close()
+        
         if row:
             session["user_id"] = row["id"]
             session["username"] = row["username"]
             session["role"] = row["role"]
-            # Issue a weak JWT the dashboard uses to call the API.
             session["token"] = make_jwt({
                 "user_id": row["id"], "username": row["username"], "role": row["role"],
             })

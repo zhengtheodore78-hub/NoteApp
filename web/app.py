@@ -24,6 +24,9 @@ from flask import (
 # Import encryption utilities for AES-GCM comment encryption
 from encryption import encrypt_comment, decrypt_comment
 
+# Import HMAC utilities for grade export integrity protection
+from hmac_utils import add_hmac_to_csv, verify_csv_integrity
+
 # --- Configuration ------------------------------------------------------------
 # All configuration comes from the environment (set in docker-compose.yml).
 DB_HOST = os.environ.get("DB_HOST", "db")
@@ -370,20 +373,65 @@ def export_csv():
         )
     rows = cur.fetchall()
     conn.close()
-    
+
     # Decrypt comments before exporting to CSV
     for row in rows:
         row["comment"] = decrypt_comment(row["comment"])
-    
+
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["student", "class", "grade", "comment"])
     for r in rows:
         writer.writerow([r["student"], r["class"], r["grade"], r["comment"]])
+    
+    # Get raw CSV content
+    csv_content = buf.getvalue()
+    
+    # Add HMAC for integrity protection (Class 4 requirement)
+    csv_with_hmac = add_hmac_to_csv(csv_content)
+    
     return Response(
-        buf.getvalue(), mimetype="text/csv",
+        csv_with_hmac, mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=grades.csv"},
     )
+
+
+@app.route("/verify-hmac", methods=["POST"])
+def verify_hmac_upload():
+    """
+    Verify the integrity of an uploaded grades CSV file.
+    
+    This endpoint checks if the HMAC in the uploaded file matches
+    the computed HMAC, detecting any tampering.
+    """
+    if not login_required("teacher"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    if "file" not in request.files:
+        return jsonify({"error": "no file uploaded"}), 400
+    
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "empty filename"}), 400
+    
+    # Read uploaded file content
+    csv_content = file.read().decode("utf-8")
+    
+    # Verify HMAC integrity
+    is_valid = verify_csv_integrity(csv_content)
+    
+    if is_valid:
+        return jsonify({
+            "status": "success",
+            "message": "HMAC verification passed - file integrity confirmed",
+            "valid": True
+        })
+    else:
+        return jsonify({
+            "status": "failed",
+            "message": "HMAC verification failed - file may have been tampered!",
+            "valid": False
+        }), 403
 
 
 @app.route("/admin")

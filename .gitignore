@@ -12,3 +12,9 @@ venv/
 # Local env overrides
 .env
 .env.local
+
+# SSL/TLS Certificates (private keys should NEVER be committed)
+nginx/certs/*.key
+nginx/certs/*.pfx
+nginx/certs/*.crt
+nginx/certs/*.pem

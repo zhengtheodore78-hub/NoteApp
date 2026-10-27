@@ -115,10 +115,10 @@ def make_jwt(payload: dict) -> str:
 
 
 def verify_jwt(token: str):
-    """Decode a JWT. Accepts alg:none (no signature) and HS256 with a short key.
+    """Decode and verify a JWT. Only HS256 with a valid signature is accepted.
 
-    This is intentionally broken (flaw #4): an attacker can forge any identity
-    by setting "alg":"none", and the HS256 key is trivially guessable.
+    Fixed (flaw #4): "alg":"none" is rejected and the algorithm is pinned to
+    HS256, so a token without a valid signature is refused.
     """
     try:
         h_b64, p_b64, sig_b64 = token.split(".")
@@ -131,15 +131,14 @@ def verify_jwt(token: str):
         return None
 
     alg = header.get("alg", "").lower()
-    if alg == "none":
-        # No signature verification at all.
-        return payload
-    if alg == "hs256":
-        signing_input = f"{h_b64}.{p_b64}".encode()
-        expected = _b64url(hmac.new(JWT_SECRET.encode(), signing_input, hashlib.sha256).digest())
-        if hmac.compare_digest(expected, sig_b64):
-            return payload
+    # Fixed (flaw #4): reject "alg":"none" and pin the algorithm to HS256 so the
+    # signature is ALWAYS verified. A forged token can no longer bypass auth.
+    if alg != "hs256":
         return None
+    signing_input = f"{h_b64}.{p_b64}".encode()
+    expected = _b64url(hmac.new(JWT_SECRET.encode(), signing_input, hashlib.sha256).digest())
+    if hmac.compare_digest(expected, sig_b64):
+        return payload
     return None
 
 

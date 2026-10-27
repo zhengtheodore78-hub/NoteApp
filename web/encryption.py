@@ -1,13 +1,23 @@
 """
 Encryption utilities for NotesApp using AES-GCM
 """
-from Crypto.Cipher import AES
-from Crypto.Random import get_random_bytes
+import os
 import base64
 
-# AES key (must be 16, 24, or 32 bytes)
-# In production, store this securely (e.g., environment variable, key management service)
-AES_KEY = b'0123456789abcdef'  # 16 bytes = AES-128
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+
+# AES key for comment encryption.
+# Loaded from the environment (set in .env, which is gitignored) so that no key
+# material is ever hard-coded in source. Key length 16/24/32 bytes -> AES-128/192/256.
+_aes_key = os.environ.get("AES_KEY")
+if not _aes_key:
+    raise RuntimeError(
+        "AES_KEY is not set. Put it in .env (for docker compose) "
+        "or export AES_KEY before running."
+    )
+AES_KEY = _aes_key.encode("utf-8")
+
 
 
 def encrypt_comment(plaintext):

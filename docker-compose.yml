@@ -25,6 +25,7 @@ services:
       POSTGRES_PASSWORD: notesapp_pg_pw_2024
       JWT_SECRET: s3cr3t
       SECRET_KEY: dev-session-key
+      AES_KEY: ${AES_KEY}   # loaded from .env (gitignored); never hard-code key material
     ports:
       - "8080:5000"
     depends_on:

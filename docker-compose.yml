@@ -23,7 +23,7 @@ services:
       DB_NAME: notesapp
       DB_USER: notesapp
       POSTGRES_PASSWORD: notesapp_pg_pw_2024
-      JWT_SECRET: s3cr3t
+      JWT_SECRET: ${JWT_SECRET}   # loaded from .env (gitignored); long random secret, no more s3cr3t
       SECRET_KEY: dev-session-key
       AES_KEY: ${AES_KEY}   # loaded from .env (gitignored); never hard-code key material
     ports:

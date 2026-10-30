@@ -36,7 +36,11 @@ DB_HOST = os.environ.get("DB_HOST", "db")
 DB_NAME = os.environ.get("DB_NAME", "notesapp")
 DB_USER = os.environ.get("DB_USER", "notesapp")
 DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "notesapp_pg_pw_2024")
-JWT_SECRET = os.environ.get("JWT_SECRET", "s3cr3t")
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET:
+    # Fixed (flaw #4, rule 3): no weak hard-coded fallback. The signing
+    # secret must be a long random value provided via the environment (.env).
+    raise RuntimeError("JWT_SECRET is not set (put a long random value in .env).")
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-session-key")
 
 app = Flask(__name__)

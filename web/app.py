@@ -300,6 +300,9 @@ def api_notes(note_id):
     )
     note = cur.fetchone()
     conn.close()
+    # Flaw #7 fix (Class 8): you may only read your OWN note. Teachers/admins
+    # may read any note; a student may not. Returns 404 (not 403) so the
+    # response does not even confirm the id exists.
     if not note or not can_read_note(ident, note):
         return jsonify({"error": "not found"}), 404
     note["grade"] = float(note["grade"]) if note["grade"] is not None else None

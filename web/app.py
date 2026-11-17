@@ -192,7 +192,8 @@ def login():
         conn = get_db()
         cur = conn.cursor()
         try:
-            # Get user with password hash
+            # Flaw #8 fix (Class 9): parameterised query — %s placeholders the DB
+            # driver fills with the input as DATA, never as SQL grammar. No gluing.
             cur.execute(
                 "SELECT id, username, role, password FROM users "
                 "WHERE username = %s",
@@ -203,15 +204,13 @@ def login():
             log(f"login query error: {e}")
             error = "Login failed."
             row = None
-        
+
         if row:
             stored_password = row["password"]
-            
+
             # Check password type and verify accordingly
             if is_argon2_hash(stored_password):
-                # Argon2 hash - verify properly
                 if verify_password(stored_password, password):
-                    # Check if rehash needed (parameters updated)
                     if needs_rehash(stored_password):
                         new_hash = hash_password(password)
                         cur.execute(
@@ -220,14 +219,11 @@ def login():
                         )
                         conn.commit()
                         log(f"password rehashed for user={row['username']}")
-                    # Login successful
                     pass
                 else:
                     row = None  # Invalid password
             else:
-                # Legacy plaintext or MD5 - verify directly, then upgrade
                 if stored_password == password:
-                    # Plaintext match - upgrade to Argon2
                     new_hash = hash_password(password)
                     cur.execute(
                         "UPDATE users SET password = %s WHERE id = %s",
@@ -237,9 +233,9 @@ def login():
                     log(f"password upgraded from plaintext for user={row['username']}")
                 else:
                     row = None  # Invalid password
-        
+
         conn.close()
-        
+
         if row:
             session["user_id"] = row["id"]
             session["username"] = row["username"]
@@ -500,6 +496,9 @@ def admin_ping():
         return redirect(url_for("login"))
     host = request.form.get("host", "").strip()
     
+    # Flaw #9 fix (Class 9): no shell. Pass the command as an argument LIST so
+    # `host` is one single argument start to finish — there is no shell to read
+    # `;` `&` `|`. valid_ping_host() is a second wall (defence in depth).
     if not valid_ping_host(host):
         output = "Invalid host."
     else:

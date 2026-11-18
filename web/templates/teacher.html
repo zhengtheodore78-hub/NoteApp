@@ -44,7 +44,7 @@
         <td>{{ n.student }}</td>
         <td>{{ n.class_name }}</td>
         <td>{{ n.grade }}</td>
-        <td>{% autoescape false %}{{ n.comment }}{% endautoescape %}</td>
+        <td>{{ n.comment }}</td>  {# Flaw #10 fix (Class 10): autoescaping ON — shown as text #}
       </tr>
       {% endfor %}
     </tbody>
